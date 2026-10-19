@@ -1,0 +1,769 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="theme-color" content="#0e1215">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cube Timer</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Martian+Mono:wght@400;600&display=swap">
+<style>
+/* Layout concept: one full-height app shell. A persistent nav on top, and below it either the
+   full-bleed timer surface (the whole screen is the button) or a scrolling page for the other views. */
+:root {
+  --bg: #0e1215;          /* deep slate-charcoal */
+  --surface: #151b1f;
+  --surface-2: #1c2429;
+  --line: #28333a;
+  --fg: #e9eff1;
+  --muted: #8d9ca3;
+  --accent: #2de39b;      /* neon emerald: running timer, primary actions */
+  --accent-ink: #04120b;
+  --amber: #f6a623;       /* holding, warnings */
+  --red: #ff4b4b;         /* armed, destructive */
+  --gold: #ffd25e;        /* personal best */
+  --glow: rgba(45, 227, 155, 0.17);
+  --font-display: "Martian Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --font-body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #eef3f2; --surface: #ffffff; --surface-2: #e4ecea; --line: #cbd8d5;
+    --fg: #11201d; --muted: #587069; --accent: #0a9b64; --accent-ink: #ffffff;
+    --amber: #b76a00; --red: #d62f2f; --gold: #a87400; --glow: rgba(10, 155, 100, 0.16);
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #eef3f2; --surface: #ffffff; --surface-2: #e4ecea; --line: #cbd8d5;
+  --fg: #11201d; --muted: #587069; --accent: #0a9b64; --accent-ink: #ffffff;
+  --amber: #b76a00; --red: #d62f2f; --gold: #a87400; --glow: rgba(10, 155, 100, 0.16);
+  color-scheme: light;
+}
+
+html { box-sizing: border-box; height: 100%; }
+body { height: 100%; background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.5; overscroll-behavior: none; -webkit-tap-highlight-color: transparent; }
+#root { height: 100%; display: flex; flex-direction: column; }
+.gutter { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.mono { font-family: var(--font-display); font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+.nowrap { white-space: nowrap; }
+.fill { height: 100%; }
+
+/* Navigation */
+.nav { background: var(--surface); border-bottom: 1px solid var(--line); flex: none; }
+.nav-inner { display: flex; align-items: center; gap: 12px; min-height: 56px; max-width: 1100px; margin: 0 auto; }
+.brand { display: flex; align-items: center; gap: 10px; font-family: var(--font-display); font-weight: 600; font-size: .9rem; letter-spacing: -.03em; white-space: nowrap; }
+.logo { width: 28px; height: 28px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; padding: 3px; background: #0b0f11; border-radius: 7px; flex: none; }
+.logo i { border-radius: 2px; display: block; }
+.tabs { display: flex; gap: 4px; margin-left: auto; min-width: 0; }
+.tab { position: relative; overflow: hidden; display: flex; align-items: center; gap: 7px; padding: 8px 12px; border: 0; border-radius: 10px; background: transparent; color: var(--muted); font: 600 .85rem var(--font-body); white-space: nowrap; cursor: pointer; }
+.tab:hover { color: var(--fg); background: var(--surface-2); }
+.tab[aria-current="page"] { color: var(--fg); background: var(--surface-2); box-shadow: inset 0 -2px 0 var(--accent); }
+.tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tab .emo { font-size: 1.05rem; line-height: 1; }
+.tab .lbl-short { display: none; }
+@media (max-width: 640px) {
+  .tab { flex-direction: column; gap: 2px; padding: 6px 8px; font-size: .64rem; }
+  .tab .lbl-long { display: none; }
+  .tab .lbl-short { display: inline; }
+  .brand .name { display: none; }
+  .nav-inner { gap: 8px; }
+}
+
+/* Buttons */
+.btn { position: relative; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 38px; padding: 8px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); color: var(--fg); font: 600 .85rem var(--font-body); cursor: pointer; }
+.btn:hover { border-color: var(--muted); }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.btn.danger { color: var(--red); }
+.btn.danger.armed { background: var(--red); color: #fff; border-color: transparent; }
+.btn.on { background: var(--amber); color: #1a1100; border-color: transparent; }
+.btn.sm { min-height: 30px; padding: 4px 10px; font-size: .78rem; border-radius: 8px; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.ripple { position: absolute; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: currentColor; opacity: .28; transform: scale(0); animation: rip .6s ease-out forwards; pointer-events: none; }
+@keyframes rip { to { transform: scale(22); opacity: 0; } }
+
+/* Timer surface */
+.surface { position: relative; height: 100%; display: flex; flex-direction: column; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; --tcolor: var(--fg); }
+.surface::before { content: ""; position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 46%, var(--glow), transparent 62%); opacity: 0; transition: opacity .3s; pointer-events: none; }
+.surface.run { --tcolor: var(--accent); }
+.surface.run::before { opacity: 1; animation: glow 1.6s ease-in-out infinite; }
+.surface.holding { --tcolor: var(--amber); }
+.surface.armed { --tcolor: var(--red); }
+.surface.armed::before { opacity: 1; background: radial-gradient(ellipse at 50% 46%, rgba(255, 75, 75, .16), transparent 62%); }
+.surface.inspect.warn { --tcolor: var(--amber); }
+@keyframes glow { 50% { opacity: .4; } }
+.top { position: relative; padding-block: 18px 8px; display: flex; flex-direction: column; align-items: center; gap: 10px; transition: opacity .25s; }
+.top.dim { opacity: .18; pointer-events: none; }
+.scr { max-width: 46rem; text-align: center; font-family: var(--font-display); font-size: clamp(.9rem, 2.7vw, 1.3rem); line-height: 1.75; word-spacing: .3em; overflow-wrap: anywhere; }
+.chips { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.chip { font: 600 .7rem var(--font-display); letter-spacing: .06em; text-transform: uppercase; padding: 4px 10px; border: 1px solid var(--line); border-radius: 99px; color: var(--muted); }
+.center { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; text-align: center; }
+.time { font-family: var(--font-display); font-weight: 600; font-size: clamp(3.3rem, 17vw, 9rem); letter-spacing: -.05em; line-height: 1; color: var(--tcolor); font-variant-numeric: tabular-nums; transition: color .12s; }
+.surface.run .time { text-shadow: 0 0 44px var(--glow); }
+.hint { color: var(--muted); font-weight: 500; letter-spacing: .01em; }
+.hint small { display: block; margin-top: 2px; font-size: .78rem; }
+.pbtag { color: var(--gold); font: 600 .8rem var(--font-display); letter-spacing: .08em; text-transform: uppercase; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.strip { position: relative; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; padding-block: 12px 16px; border-top: 1px solid var(--line); background: var(--surface); }
+.strip > div { text-align: center; min-width: 0; }
+.lbl { font: 600 .66rem var(--font-body); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.strip .val { font: 600 clamp(.95rem, 3.6vw, 1.25rem) var(--font-display); font-variant-numeric: tabular-nums; margin-top: 2px; overflow-wrap: anywhere; }
+
+/* Pages */
+.scroll { height: 100%; overflow-y: auto; }
+.page { max-width: 1100px; margin: 0 auto; padding-block: 22px 40px; display: flex; flex-direction: column; gap: 18px; }
+.page h1 { font: 600 1.4rem var(--font-display); letter-spacing: -.04em; margin: 0; }
+.page-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(138px, 1fr)); gap: 10px; }
+.tile { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; min-width: 0; }
+.tile .v { font: 600 1.35rem var(--font-display); font-variant-numeric: tabular-nums; margin-top: 4px; overflow-wrap: anywhere; }
+.tile.pbt .v { color: var(--gold); }
+.tbl-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+table { width: 100%; border-collapse: collapse; min-width: 660px; }
+th { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); font: 600 .7rem var(--font-body); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+th button { all: unset; cursor: pointer; display: inline-flex; gap: 4px; align-items: center; }
+th button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+td { padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+tr.click { cursor: pointer; }
+tr.click:hover td { background: var(--surface-2); }
+.scr-cell { font-size: .74rem; line-height: 1.6; color: var(--muted); max-width: 24rem; overflow-wrap: anywhere; }
+.time-cell { font-weight: 600; font-size: 1.02rem; white-space: nowrap; }
+.pill { display: inline-block; padding: 2px 9px; border: 1px solid currentColor; border-radius: 99px; font: 600 .7rem var(--font-body); white-space: nowrap; }
+.pill.gold { color: var(--gold); }
+.d-Beginner { color: var(--accent); }
+.d-Easy { color: #4ea8ff; }
+.d-Medium { color: var(--amber); }
+.d-Hard { color: var(--red); }
+.soon { font-size: .68rem; color: var(--muted); margin-left: 8px; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.field { background: var(--surface); color: var(--fg); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; font: 500 .9rem var(--font-body); min-height: 38px; min-width: 0; }
+.field:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.search { flex: 1 1 220px; }
+.seg { display: inline-flex; flex-wrap: wrap; background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 3px; gap: 2px; }
+.seg button { position: relative; overflow: hidden; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font: 600 .84rem var(--font-body); padding: 7px 14px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.empty { text-align: center; padding: 44px 16px; display: flex; flex-direction: column; gap: 14px; align-items: center; color: var(--muted); }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 4px 18px; }
+.row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 0; border-bottom: 1px solid var(--line); }
+.row:last-child { border-bottom: 0; }
+.row .t { font-weight: 600; }
+.row .d { color: var(--muted); font-size: .85rem; }
+input[type="range"] { accent-color: var(--accent); width: min(220px, 100%); }
+.foot { color: var(--muted); font-size: .8rem; }
+
+/* Modal */
+.overlay { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; justify-content: center; background: rgba(4, 8, 10, .6); padding-top: max(16px, env(safe-area-inset-top, 0px)); padding-bottom: env(safe-area-inset-bottom, 0px); }
+.sheet { width: 100%; max-width: 520px; max-height: 92%; overflow-y: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 18px 18px 0 0; padding: 22px; display: flex; flex-direction: column; gap: 14px; }
+.sheet h2 { margin: 0; font: 600 1.15rem var(--font-display); letter-spacing: -.03em; }
+.sheet textarea { width: 100%; min-height: 120px; max-height: 220px; resize: vertical; font: 400 .72rem/1.5 var(--font-display); }
+.soonbox { border: 1px dashed var(--line); border-radius: 12px; padding: 16px; background: var(--surface-2); }
+@media (min-width: 640px) {
+  .overlay { align-items: center; padding-bottom: max(16px, env(safe-area-inset-bottom, 0px)); }
+  .sheet { border-radius: 18px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/htm@3.1.1/dist/htm.umd.js"></script>
+<script>window.htm||document.write('<script src="https://unpkg.com/htm@3.1.1/dist/htm.umd.js"><\/script>')</script>
+<script src="https://cdn.jsdelivr.net/npm/framer-motion@10.16.4/dist/framer-motion.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/canvas-confetti/1.9.2/confetti.browser.min.js"></script>
+
+<style>body{margin:0}</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+(function () {
+'use strict';
+const { useState, useEffect, useRef, useMemo } = React;
+const html = htm.bind(React.createElement);
+
+/* ---------- Framer Motion, with a plain-element fallback if the CDN build is unavailable ---------- */
+const FM = window.Motion || window.FramerMotion || {};
+const MOTION_PROPS = ['initial', 'animate', 'exit', 'transition', 'whileHover', 'whileTap', 'layout', 'layoutId', 'variants'];
+const shimCache = {};
+const motion = (FM.motion) ? FM.motion : new Proxy({}, {
+  get: (_, tag) => shimCache[tag] || (shimCache[tag] = React.forwardRef((props, ref) => {
+    const rest = Object.assign({}, props);
+    MOTION_PROPS.forEach((k) => delete rest[k]);
+    return React.createElement(tag, Object.assign({}, rest, { ref }));
+  }))
+});
+const AnimatePresence = FM.AnimatePresence || (({ children }) => React.createElement(React.Fragment, null, children));
+
+/* ---------- Formatting + solve maths ---------- */
+const pad = (n, l = 2) => String(n).padStart(l, '0');
+// MM:SS.cc, dropping the minutes while under a minute
+function fmt(ms) {
+  const t = Math.floor(ms / 10), cs = t % 100, s = Math.floor(t / 100) % 60, m = Math.floor(t / 6000);
+  return m > 0 ? m + ':' + pad(s) + '.' + pad(cs) : s + '.' + pad(cs);
+}
+const eff = (s) => (s.dnf ? Infinity : s.ms + (s.plus2 ? 2000 : 0));
+const fmtSolve = (s) => (s.dnf ? 'DNF' : fmt(eff(s)) + (s.plus2 ? '+' : ''));
+const fmtStat = (v) => (v == null ? '—' : !isFinite(v) ? 'DNF' : fmt(Math.round(v / 10) * 10));
+const fmtDate = (ts) => new Date(ts).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+// WCA-style average: drop the best and worst, mean the rest; more than one DNF makes the average a DNF.
+function avgOf(arr, n) {
+  if (arr.length < n) return null;
+  if (arr.filter((x) => !isFinite(x)).length > 1) return Infinity;
+  const s = arr.slice().sort((a, b) => (a === b ? 0 : a - b));
+  const mid = s.slice(1, n - 1);
+  return mid.reduce((a, b) => a + b, 0) / mid.length;
+}
+function bestAvg(e, n) {
+  let best = null;
+  for (let i = n; i <= e.length; i++) {
+    const v = avgOf(e.slice(i - n, i), n);
+    if (v != null && isFinite(v) && (best == null || v < best)) best = v;
+  }
+  return best;
+}
+function computeStats(list) {
+  const e = list.map(eff), fin = e.filter(Number.isFinite);
+  return {
+    count: list.length,
+    cur: e.length ? e[e.length - 1] : null,
+    best: fin.length ? Math.min.apply(null, fin) : null,
+    ao5: avgOf(e.slice(-5), 5), ao12: avgOf(e.slice(-12), 12),
+    bao5: bestAvg(e, 5), bao12: bestAvg(e, 12)
+  };
+}
+
+/* ---------- Scramble generators ---------- */
+const rnd = (n) => Math.floor(Math.random() * n);
+function scramble3(len) {
+  const faces = ['U', 'D', 'R', 'L', 'F', 'B'], axis = { U: 0, D: 0, R: 1, L: 1, F: 2, B: 2 }, mods = ['', "'", '2'];
+  const out = [];
+  while (out.length < len) {
+    const f = faces[rnd(6)], p = out[out.length - 1], p2 = out[out.length - 2];
+    if (f === p) continue;
+    if (p && axis[f] === axis[p] && p2 === f) continue; // no U D U
+    out.push(f);
+  }
+  return out.map((f) => f + mods[rnd(3)]).join(' ');
+}
+function scramble2() {
+  const faces = ['R', 'U', 'F'], mods = ['', "'", '2'], out = [];
+  while (out.length < 9) { const f = faces[rnd(3)]; if (f !== out[out.length - 1]) out.push(f); }
+  return out.map((f) => f + mods[rnd(3)]).join(' ');
+}
+function scramblePyra() {
+  const faces = ['U', 'L', 'R', 'B'], out = [];
+  while (out.length < 10) { const f = faces[rnd(4)]; if (f !== out[out.length - 1]) out.push(f); }
+  const body = out.map((f) => f + (rnd(2) ? "'" : ''));
+  const tips = ['u', 'l', 'r', 'b'].filter(() => rnd(2)).map((t) => t + (rnd(2) ? "'" : ''));
+  return body.concat(tips).join(' ');
+}
+const PUZZLES = [['3x3', '3×3'], ['2x2', '2×2'], ['pyra', 'Pyraminx']];
+const genScramble = (p) => (p === '2x2' ? scramble2() : p === 'pyra' ? scramblePyra() : scramble3(20));
+const puzzleLabel = (p) => (PUZZLES.find((x) => x[0] === p) || [0, p])[1];
+
+/* ---------- Web Audio sound effects (no audio files) ---------- */
+const Sfx = (function () {
+  let ctx = null, out = null, noise = null, vol = 0.7, muted = false;
+  function ensure() {
+    try {
+      if (!ctx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return null;
+        ctx = new AC(); out = ctx.createGain(); out.connect(ctx.destination);
+        const len = Math.floor(ctx.sampleRate * 0.06);
+        noise = ctx.createBuffer(1, len, ctx.sampleRate);
+        const d = noise.getChannelData(0);
+        for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
+      }
+      if (ctx.state === 'suspended') ctx.resume();
+      out.gain.value = muted ? 0 : vol;
+      return ctx;
+    } catch (e) { return null; }
+  }
+  function tone(f, t0, dur, type, g, f2) {
+    const c = ensure(); if (!c) return;
+    const o = c.createOscillator(), a = c.createGain(), t = c.currentTime + t0;
+    o.type = type; o.frequency.setValueAtTime(f, t);
+    if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + dur);
+    a.gain.setValueAtTime(0.0001, t);
+    a.gain.exponentialRampToValueAtTime(g, t + 0.005);
+    a.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(a); a.connect(out); o.start(t); o.stop(t + dur + 0.02);
+  }
+  return {
+    ensure: ensure,
+    set: function (v, m) { vol = v; muted = m; if (out) out.gain.value = m ? 0 : v; },
+    click: function () { // mechanical click: filtered noise burst + a short low thump
+      const c = ensure(); if (!c) return;
+      const s = c.createBufferSource(); s.buffer = noise;
+      const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2800; bp.Q.value = 0.9;
+      const g = c.createGain(); g.gain.value = 0.9;
+      s.connect(bp); bp.connect(g); g.connect(out); s.start();
+      tone(190, 0, 0.05, 'sine', 0.5, 60);
+    },
+    low: function () { tone(620, 0, 0.16, 'square', 0.12); },
+    high: function () { tone(1240, 0, 0.28, 'square', 0.12); },
+    chime: function () { [1046.5, 1318.5, 1568, 2093].forEach(function (f, i) { tone(f, i * 0.09, 0.9, 'sine', 0.22); }); }
+  };
+})();
+
+/* ---------- Persistence ---------- */
+const KEY = 'cubetimer.v1';
+const DEFAULTS = { inspection: 0, volume: 0.7, muted: false, theme: 'dark', puzzle: '3x3' };
+function loadStore() {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (raw) { const d = JSON.parse(raw); return { solves: Array.isArray(d.solves) ? d.solves : [], settings: Object.assign({}, DEFAULTS, d.settings || {}) }; }
+  } catch (e) { /* fall through */ }
+  return { solves: [], settings: Object.assign({}, DEFAULTS) };
+}
+function saveStore(solves, settings) { try { localStorage.setItem(KEY, JSON.stringify({ solves: solves, settings: settings })); } catch (e) { /* ignore */ } }
+function parseImport(txt) {
+  const d = JSON.parse(txt), arr = Array.isArray(d) ? d : d.solves;
+  if (!Array.isArray(arr)) throw new Error('No solves list found in that JSON.');
+  const out = arr.filter((s) => s && typeof s.ms === 'number').map((s) => ({
+    id: String(s.id || uid()), ms: s.ms, plus2: !!s.plus2, dnf: !!s.dnf,
+    scramble: String(s.scramble || ''), puzzle: s.puzzle || '3x3', ts: Number(s.ts) || Date.now()
+  }));
+  if (!out.length) throw new Error('No valid solves found in that JSON.');
+  return out;
+}
+
+/* ---------- Tutorials data (move counts are typical lengths, rotations excluded) ---------- */
+const B = 'CFOP - Beginner', OE = 'CFOP - 2-Look OLL', PL = 'CFOP - 2-Look PLL', FP = 'CFOP - Full PLL', F2 = 'F2L';
+const ALGS = [
+  ['White Cross (Intuitive)', B, 'Beginner', 7], ['White Corners: Right Trigger', B, 'Beginner', 4],
+  ['Middle Layer: Insert Right', B, 'Beginner', 8], ['Middle Layer: Insert Left', B, 'Beginner', 8],
+  ['Yellow Cross', B, 'Beginner', 6], ['Position Yellow Edges', B, 'Beginner', 8],
+  ['Position Yellow Corners', B, 'Easy', 8], ['Orient Yellow Corners', B, 'Easy', 4],
+  ['OLL Edges: Line', OE, 'Beginner', 6], ['OLL Edges: L-Shape', OE, 'Beginner', 6], ['OLL Edges: Dot', OE, 'Easy', 12],
+  ['OLL Corners: Sune', OE, 'Easy', 7], ['OLL Corners: Anti-Sune', OE, 'Easy', 7], ['OLL Corners: H', OE, 'Medium', 11],
+  ['OLL Corners: Pi', OE, 'Medium', 9], ['OLL Corners: U', OE, 'Medium', 9], ['OLL Corners: T', OE, 'Medium', 8], ['OLL Corners: L', OE, 'Medium', 8],
+  ['PLL Corners: Aa-Perm', PL, 'Easy', 9], ['PLL Corners: Ab-Perm', PL, 'Easy', 9], ['PLL Corners: Y-Perm', PL, 'Medium', 17],
+  ['PLL Edges: Ua-Perm', PL, 'Easy', 7], ['PLL Edges: Ub-Perm', PL, 'Easy', 7], ['PLL Edges: H-Perm', PL, 'Easy', 7], ['PLL Edges: Z-Perm', PL, 'Medium', 9],
+  ['T-Perm', FP, 'Medium', 14], ['Jb-Perm', FP, 'Medium', 13], ['Ja-Perm', FP, 'Medium', 10], ['V-Perm', FP, 'Hard', 14], ['F-Perm', FP, 'Hard', 18],
+  ['Connected Pair: Insert Right', F2, 'Beginner', 3], ['Connected Pair: Insert Left', F2, 'Beginner', 3],
+  ['Separated Pair: Join and Insert', F2, 'Easy', 4], ['Corner and Edge on Opposite Sides', F2, 'Medium', 7],
+  ['Corner in Slot, Edge on Top', F2, 'Medium', 8], ['Edge in Slot, Corner on Top', F2, 'Medium', 8],
+  ['Both Pieces in Slot, Wrong Orientation', F2, 'Hard', 10], ['Twisted Corner, Flipped Edge', F2, 'Hard', 9]
+].map((r, i) => ({ id: i, name: r[0], cat: r[1], diff: r[2], moves: r[3] }));
+const CATS = ['All', B, OE, PL, FP, F2];
+const DIFFS = ['All', 'Beginner', 'Easy', 'Medium', 'Hard'];
+const DRANK = { Beginner: 0, Easy: 1, Medium: 2, Hard: 3 };
+
+/* ---------- Small UI pieces ---------- */
+// Button with a ripple at the touch point and spring hover / tap motion
+function Btn(props) {
+  const { className = '', plain, children, onClick, onPointerDown } = props;
+  const rest = Object.assign({}, props);
+  ['className', 'plain', 'children', 'onClick', 'onPointerDown'].forEach((k) => delete rest[k]);
+  const [rip, setRip] = useState([]);
+  const down = (e) => {
+    const r = e.currentTarget.getBoundingClientRect(), id = Math.random();
+    setRip((a) => a.concat([{ id: id, x: e.clientX - r.left, y: e.clientY - r.top }]));
+    setTimeout(() => setRip((a) => a.filter((i) => i.id !== id)), 650);
+    if (onPointerDown) onPointerDown(e);
+  };
+  return html`<${motion.button} type="button" data-ui="1" whileHover=${{ y: -1 }} whileTap=${{ scale: 0.96 }}
+    className=${(plain ? '' : 'btn ') + className} onPointerDown=${down} onClick=${onClick} ...${rest}>
+    ${rip.map((r) => html`<span key=${r.id} className="ripple" style=${{ left: r.x, top: r.y }}></span>`)}
+    ${children}
+  <//>`;
+}
+
+function Segmented({ value, options, onChange, label }) {
+  return html`<div className="seg" role="group" aria-label=${label} data-ui="1">
+    ${options.map((o) => html`<button key=${o[0]} type="button" aria-pressed=${value === o[0]} onClick=${() => onChange(o[0])}>${o[1]}</button>`)}
+  </div>`;
+}
+
+function Modal({ open, onClose, label, children }) {
+  useEffect(() => {
+    if (!open) return;
+    const k = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, [open]);
+  return html`<${AnimatePresence}>
+    ${open && html`<${motion.div} key="overlay" className="overlay gutter" data-ui="1" role="dialog" aria-modal="true" aria-label=${label}
+      onClick=${onClose} initial=${{ opacity: 0 }} animate=${{ opacity: 1 }} exit=${{ opacity: 0 }} transition=${{ duration: 0.18 }}>
+      <${motion.div} className="sheet" onClick=${(e) => e.stopPropagation()}
+        initial=${{ y: 60, opacity: 0 }} animate=${{ y: 0, opacity: 1 }} exit=${{ y: 60, opacity: 0 }}
+        transition=${{ type: 'spring', damping: 28, stiffness: 320 }}>${children}<//>
+    <//>`}
+  <//>`;
+}
+
+function Header({ view, onView }) {
+  const tabs = [['timer', '⏱️', 'Timer', 'Timer'], ['history', '📊', 'History & Stats', 'History'], ['tutorials', '📖', 'Tutorials', 'Learn'], ['settings', '⚙️', 'Settings', 'Settings']];
+  const colors = ['#ffffff', '#ffd500', '#ff3b30', '#ff9500', '#0a84ff', '#30d158', '#ffd500', '#ffffff', '#0a84ff'];
+  return html`<header className="nav" data-ui="1"><div className="nav-inner gutter">
+    <div className="brand"><span className="logo" aria-hidden="true">${colors.map((c, i) => html`<i key=${i} style=${{ background: c }}></i>`)}</span><span className="name">Cube Timer</span></div>
+    <nav className="tabs" aria-label="Views">
+      ${tabs.map((t) => html`<${Btn} plain key=${t[0]} className="tab" aria-current=${view === t[0] ? 'page' : undefined} onClick=${() => onView(t[0])}>
+        <span className="emo" aria-hidden="true">${t[1]}</span><span className="lbl-long">${t[2]}</span><span className="lbl-short">${t[3]}</span><//>`)}
+    </nav>
+  </div></header>`;
+}
+
+/* ---------- Timer view ---------- */
+function TimerView(p) {
+  const { phase, elapsed, inspE, settings, scr, lastSolve, stats, pb, onNewScramble, onMod, onDelete } = p;
+  const dur = settings.inspection;
+  let digits, hint, extra = '';
+  if (phase === 'running') { digits = fmt(elapsed); hint = 'Touch anywhere to stop'; }
+  else if (phase === 'inspect') {
+    const left = dur - inspE;
+    digits = left > 0 ? String(left) : dur === 15 ? (inspE >= 17 ? 'DNF' : '+2') : 'GO';
+    hint = 'Hold to arm, release to start';
+    if (dur === 15 && inspE >= 8) extra = ' warn';
+  }
+  else if (phase === 'holding') { digits = '0.00'; hint = 'Keep holding…'; }
+  else if (phase === 'armed') { digits = '0.00'; hint = 'Release to start'; }
+  else { digits = lastSolve ? fmtSolve(lastSolve) : '0.00'; hint = 'Touch anywhere to start'; }
+  const idle = phase === 'idle';
+  const surfaceCls = 'surface ' + (phase === 'running' ? 'run' : phase) + extra;
+  return html`<div className=${surfaceCls} onContextMenu=${(e) => e.preventDefault()}>
+    <div className=${'top gutter' + (phase === 'idle' || phase === 'inspect' ? '' : ' dim')}>
+      <div className="chips"><span className="chip">${puzzleLabel(settings.puzzle)}</span>
+        ${dur ? html`<span className="chip">${dur}s inspection</span>` : null}
+        <${Btn} className="sm" onClick=${onNewScramble} aria-label="New scramble">New scramble<//></div>
+      <div className="scr" title="Scramble">${scr}</div>
+    </div>
+    <div className="center gutter">
+      <${motion.div} className="time" aria-live="off" animate=${phase === 'running' ? { scale: [1, 1.025, 1] } : { scale: 1 }}
+        transition=${phase === 'running' ? { duration: 1.1, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.15 }}>${digits}<//>
+      <div className="hint">${hint}${idle && dur ? html`<small>${dur} second inspection is on</small>` : null}</div>
+      ${idle && pb ? html`<div className="pbtag">New personal best</div>` : null}
+      ${idle && lastSolve ? html`<div className="actions">
+        <${Btn} className=${'sm' + (lastSolve.plus2 ? ' on' : '')} onClick=${() => onMod(lastSolve.id, 'plus2')}>+2<//>
+        <${Btn} className=${'sm' + (lastSolve.dnf ? ' on' : '')} onClick=${() => onMod(lastSolve.id, 'dnf')}>DNF<//>
+        <${Btn} className="sm danger" onClick=${() => onDelete(lastSolve.id)}>Delete<//>
+      </div>` : null}
+    </div>
+    <div className="strip gutter">
+      <div><div className="lbl">Best</div><div className="val" style=${{ color: 'var(--gold)' }}>${fmtStat(stats.best)}</div></div>
+      <div><div className="lbl">Ao5</div><div className="val">${fmtStat(stats.ao5)}</div></div>
+      <div><div className="lbl">Ao12</div><div className="val">${fmtStat(stats.ao12)}</div></div>
+      <div><div className="lbl">Solves</div><div className="val">${stats.count}</div></div>
+    </div>
+  </div>`;
+}
+
+/* ---------- History & Stats ---------- */
+function HistoryView({ solves, stats, puzzle, onPuzzle, onMod, onDelete, onData, onGoTimer }) {
+  const rows = solves.map((s, i) => ({ s: s, n: i + 1 })).reverse();
+  const tiles = [['Current', stats.cur], ['Best (PB)', stats.best, 'pbt'], ['Ao5', stats.ao5], ['Ao12', stats.ao12], ['Best Ao5', stats.bao5], ['Best Ao12', stats.bao12]];
+  return html`<div className="scroll"><div className="page gutter">
+    <div className="page-head"><h1>History & Stats</h1>
+      <div className="toolbar"><${Segmented} label="Puzzle" value=${puzzle} options=${PUZZLES} onChange=${onPuzzle} /><${Btn} onClick=${onData}>Export / Import<//></div></div>
+    <div className="tiles">
+      ${tiles.map((t) => html`<div key=${t[0]} className=${'tile ' + (t[2] || '')}><div className="lbl">${t[0]}</div><div className="v">${fmtStat(t[1])}</div></div>`)}
+      <div className="tile"><div className="lbl">Solves</div><div className="v">${stats.count}</div></div>
+    </div>
+    ${rows.length === 0 ? html`<div className="empty tbl-wrap"><div>No ${puzzleLabel(puzzle)} solves yet. Tap anywhere on the Timer screen to log your first one.</div><${Btn} className="primary" onClick=${onGoTimer}>Go to timer<//></div>` : html`
+    <div className="tbl-wrap"><table>
+      <thead><tr><th>#</th><th>Time</th><th>Scramble</th><th>Date</th><th>Status</th></tr></thead>
+      <tbody>${rows.map((r) => html`<tr key=${r.s.id}>
+        <td className="mono muted">${r.n}</td>
+        <td className="mono time-cell">${fmtSolve(r.s)} ${stats.best != null && eff(r.s) === stats.best ? html`<span className="pill gold">PB</span>` : null}</td>
+        <td className="mono scr-cell">${r.s.scramble}</td>
+        <td className="muted nowrap" title=${new Date(r.s.ts).toString()}>${fmtDate(r.s.ts)}</td>
+        <td><div className="toolbar" style=${{ gap: 6, flexWrap: 'nowrap' }}>
+          <${Btn} className=${'sm' + (r.s.plus2 ? ' on' : '')} aria-pressed=${!!r.s.plus2} onClick=${() => onMod(r.s.id, 'plus2')}>+2<//>
+          <${Btn} className=${'sm' + (r.s.dnf ? ' on' : '')} aria-pressed=${!!r.s.dnf} onClick=${() => onMod(r.s.id, 'dnf')}>DNF<//>
+          <${Btn} className="sm danger" aria-label="Delete solve" onClick=${() => onDelete(r.s.id)}>Delete<//>
+        </div></td></tr>`)}</tbody>
+    </table></div>`}
+    <div className="foot">Ao5 and Ao12 drop the best and worst solve and average the rest. Stats cover the selected puzzle only.</div>
+  </div></div>`;
+}
+
+/* ---------- Tutorials ---------- */
+function TutorialsView({ onOpen }) {
+  const [q, setQ] = useState(''), [cat, setCat] = useState('All'), [diff, setDiff] = useState('All');
+  const [sort, setSort] = useState({ key: 'id', dir: 1 });
+  const list = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    const f = ALGS.filter((a) => (cat === 'All' || a.cat === cat) && (diff === 'All' || a.diff === diff) && (!t || (a.name + ' ' + a.cat).toLowerCase().indexOf(t) >= 0));
+    const val = (a) => (sort.key === 'diff' ? DRANK[a.diff] : a[sort.key]);
+    return f.sort((a, b) => { const x = val(a), y = val(b); return (x < y ? -1 : x > y ? 1 : a.id - b.id) * sort.dir; });
+  }, [q, cat, diff, sort]);
+  const th = (key, label) => html`<th aria-sort=${sort.key === key ? (sort.dir === 1 ? 'ascending' : 'descending') : 'none'}>
+    <button type="button" onClick=${() => setSort((s) => ({ key: key, dir: s.key === key ? -s.dir : 1 }))}>${label}${sort.key === key ? (sort.dir === 1 ? ' ▲' : ' ▼') : ''}</button></th>`;
+  return html`<div className="scroll"><div className="page gutter">
+    <div className="page-head"><h1>Tutorials & Algorithms</h1><span className="muted">${list.length} of ${ALGS.length} shown</span></div>
+    <div className="toolbar" data-ui="1">
+      <input id="alg-search" className="field search" type="search" placeholder="Search algorithms" aria-label="Search algorithms" value=${q} onChange=${(e) => setQ(e.target.value)} />
+      <select id="alg-cat" className="field" aria-label="Method" value=${cat} onChange=${(e) => setCat(e.target.value)}>${CATS.map((c) => html`<option key=${c} value=${c}>${c === 'All' ? 'All methods' : c}</option>`)}</select>
+      <select id="alg-diff" className="field" aria-label="Difficulty" value=${diff} onChange=${(e) => setDiff(e.target.value)}>${DIFFS.map((c) => html`<option key=${c} value=${c}>${c === 'All' ? 'All difficulties' : c}</option>`)}</select>
+    </div>
+    <div className="tbl-wrap"><table>
+      <thead><tr>${th('name', 'Algorithm Name')}${th('cat', 'Category')}${th('diff', 'Difficulty')}${th('moves', 'Move Count')}<th>Status / Action</th></tr></thead>
+      <tbody>${list.length === 0 ? html`<tr><td colSpan="5" className="muted" style=${{ textAlign: 'center', padding: 32 }}>No algorithms match those filters.</td></tr>` :
+        list.map((a) => html`<tr key=${a.id} className="click" onClick=${() => onOpen(a)}>
+          <td style=${{ fontWeight: 600 }}>${a.name}</td><td className="muted nowrap">${a.cat}</td>
+          <td><span className=${'pill d-' + a.diff}>${a.diff}</span></td><td className="mono">${a.moves}</td>
+          <td className="nowrap"><${Btn} className="sm" onClick=${(e) => { e.stopPropagation(); onOpen(a); }}>View<//><span className="soon">Soon</span></td></tr>`)}</tbody>
+    </table></div>
+    <div className="foot">Move counts are typical lengths with rotations excluded. F2L cases vary with where the pieces start.</div>
+  </div></div>`;
+}
+
+/* ---------- Settings ---------- */
+function SettingsView({ settings, onChange, onData }) {
+  return html`<div className="scroll"><div className="page gutter">
+    <div className="page-head"><h1>Settings</h1></div>
+    <div className="panel">
+      <div className="row"><div><div className="t">Inspection time</div><div className="d">Countdown before each solve. 15 seconds follows WCA rules: beeps at 8 and 12 seconds, +2 after 15, DNF after 17.</div></div>
+        <${Segmented} label="Inspection" value=${settings.inspection} options=${[[0, 'Off'], [3, '3 s'], [15, '15 s']]} onChange=${(v) => onChange({ inspection: v })} /></div>
+      <div className="row"><div><div className="t">Puzzle and scramble type</div><div className="d">Each puzzle keeps its own history and averages.</div></div>
+        <${Segmented} label="Puzzle" value=${settings.puzzle} options=${PUZZLES} onChange=${(v) => onChange({ puzzle: v })} /></div>
+      <div className="row"><div><div className="t">Sound volume</div><div className="d">Click, inspection beeps and the personal best chime.</div></div>
+        <div className="toolbar" data-ui="1"><input id="vol" type="range" min="0" max="100" aria-label="Sound volume" value=${Math.round(settings.volume * 100)} onChange=${(e) => onChange({ volume: Number(e.target.value) / 100 })} />
+          <${Btn} className=${'sm' + (settings.muted ? ' on' : '')} aria-pressed=${settings.muted} onClick=${() => onChange({ muted: !settings.muted })}>${settings.muted ? 'Muted' : 'Mute'}<//>
+          <${Btn} className="sm" onClick=${() => { Sfx.ensure(); Sfx.click(); setTimeout(() => Sfx.low(), 150); setTimeout(() => Sfx.high(), 450); }}>Test<//></div></div>
+      <div className="row"><div><div className="t">Theme</div><div className="d">System follows your device.</div></div>
+        <${Segmented} label="Theme" value=${settings.theme} options=${[['dark', 'Dark'], ['light', 'Light'], ['system', 'System']]} onChange=${(v) => onChange({ theme: v })} /></div>
+      <div className="row"><div><div className="t">Your data</div><div className="d">Solves are saved in this browser. Export or import them as JSON, or clear the session.</div></div>
+        <${Btn} onClick=${onData}>Export / Import<//></div>
+    </div>
+    <div className="foot">Tip: on a computer you can also hold the space bar instead of touching the screen.</div>
+  </div></div>`;
+}
+
+/* ---------- Export / import / clear ---------- */
+function DataModal({ open, onClose, solves, settings, onImport, onClear }) {
+  const [txt, setTxt] = useState(''), [msg, setMsg] = useState(''), [sure, setSure] = useState(false), ta = useRef(null);
+  useEffect(() => { if (open) { setMsg(''); setSure(false); setTxt(''); } }, [open]);
+  const exp = useMemo(() => JSON.stringify({ app: 'cube-timer', version: 1, exportedAt: new Date().toISOString(), solves: solves, settings: settings }, null, 2), [solves, settings, open]);
+  const copy = () => {
+    const sel = () => { if (ta.current) { ta.current.focus(); ta.current.select(); } setMsg('Press Ctrl or Cmd + C to copy the selected text.'); };
+    try { navigator.clipboard.writeText(exp).then(() => setMsg('Copied to clipboard.'), sel); } catch (e) { sel(); }
+  };
+  const doImport = (replace) => {
+    try { const n = onImport(parseImport(txt), replace); setMsg('Imported ' + n + ' solves.'); setTxt(''); } catch (e) { setMsg('Import failed: ' + e.message); }
+  };
+  const onFile = (e) => {
+    const f = e.target.files && e.target.files[0]; if (!f) return;
+    const r = new FileReader(); r.onload = () => setTxt(String(r.result || '')); r.readAsText(f);
+  };
+  return html`<${Modal} open=${open} onClose=${onClose} label="Export and import">
+    <h2>Export / Import</h2>
+    <div><label className="lbl" htmlFor="exp-json">Export (${solves.length} solves, all puzzles)</label>
+      <textarea id="exp-json" ref=${ta} className="field" readOnly value=${exp}></textarea>
+      <div className="actions" style=${{ marginTop: 8, justifyContent: 'flex-start' }}><${Btn} className="primary" onClick=${copy}>Copy JSON<//></div></div>
+    <div><label className="lbl" htmlFor="imp-json">Import</label>
+      <textarea id="imp-json" className="field" placeholder="Paste exported JSON here, or choose a file" value=${txt} onChange=${(e) => setTxt(e.target.value)}></textarea>
+      <div className="actions" style=${{ marginTop: 8, justifyContent: 'flex-start', alignItems: 'center' }}>
+        <input id="imp-file" type="file" accept="application/json,.json" aria-label="Choose JSON file" className="foot" onChange=${onFile} />
+        <${Btn} disabled=${!txt.trim()} onClick=${() => doImport(false)}>Merge<//>
+        <${Btn} disabled=${!txt.trim()} onClick=${() => doImport(true)}>Replace session<//></div></div>
+    <div className="actions" style=${{ justifyContent: 'space-between', alignItems: 'center' }}>
+      <${Btn} className=${'danger' + (sure ? ' armed' : '')} onClick=${() => { if (sure) { onClear(); setSure(false); setMsg('Session cleared.'); } else setSure(true); }}>${sure ? 'Tap again to delete all solves' : 'Clear session'}<//>
+      <${Btn} onClick=${onClose}>Close<//></div>
+    <div className="foot" role="status">${msg}</div>
+  <//>`;
+}
+
+/* ---------- App: timer state machine + wiring ---------- */
+function App() {
+  const init = useMemo(loadStore, []);
+  const [solves, setSolves] = useState(init.solves);
+  const [settings, setSettings] = useState(init.settings);
+  const [view, setView] = useState('timer');
+  const [scr, setScr] = useState(() => genScramble(init.settings.puzzle));
+  const [phase, setPhaseState] = useState('idle');
+  const [elapsed, setElapsed] = useState(0);
+  const [inspE, setInspE] = useState(0);
+  const [pb, setPb] = useState(false);
+  const [dataOpen, setDataOpen] = useState(false);
+  const [tut, setTut] = useState(null);
+
+  const puzzleSolves = useMemo(() => solves.filter((s) => s.puzzle === settings.puzzle), [solves, settings.puzzle]);
+  const stats = useMemo(() => computeStats(puzzleSolves), [puzzleSolves]);
+
+  // Refs let the window-level listeners always see the latest values without re-subscribing
+  const R = useRef({}); R.current = { settings: settings, scr: scr, puzzleSolves: puzzleSolves, view: view };
+  const phaseRef = useRef('idle');
+  const setPhase = (p) => { phaseRef.current = p; setPhaseState(p); };
+  const t0 = useRef(0), raf = useRef(0), holdT = useRef(0), inspStart = useRef(0), inspRaf = useRef(0), inspActive = useRef(false);
+  const beeps = useRef({}), pressed = useRef(false), tapStart = useRef(false), from = useRef('idle');
+
+  const stopInspection = () => { inspActive.current = false; cancelAnimationFrame(inspRaf.current); };
+  const startInspection = () => {
+    const dur = R.current.settings.inspection; if (!dur) return;
+    Sfx.click(); inspStart.current = performance.now(); inspActive.current = true; beeps.current = {};
+    setInspE(0); setPhase('inspect');
+    const tick = () => {
+      if (!inspActive.current) return;
+      const e = (performance.now() - inspStart.current) / 1000, b = beeps.current;
+      setInspE(Math.floor(e));
+      if (dur === 15) {
+        if (e >= 8 && !b.a) { b.a = 1; Sfx.low(); }
+        if (e >= 12 && !b.b) { b.b = 1; Sfx.low(); setTimeout(Sfx.low, 180); }
+        if (e >= 15 && !b.c) { b.c = 1; Sfx.high(); }
+      } else {
+        if (e >= dur - 1 && !b.a) { b.a = 1; Sfx.low(); }
+        if (e >= dur && !b.c) { b.c = 1; Sfx.high(); }
+      }
+      inspRaf.current = requestAnimationFrame(tick);
+    };
+    inspRaf.current = requestAnimationFrame(tick);
+  };
+  const penalty = useRef(null);
+  const startRun = () => {
+    clearTimeout(holdT.current);
+    penalty.current = null;
+    if (inspActive.current && R.current.settings.inspection === 15) {
+      const e = (performance.now() - inspStart.current) / 1000;
+      penalty.current = e >= 17 ? 'dnf' : e > 15 ? 'plus2' : null;
+    }
+    stopInspection();
+    Sfx.click();
+    t0.current = performance.now(); setElapsed(0); setPb(false); setPhase('running');
+    const loop = () => { setElapsed(performance.now() - t0.current); raf.current = requestAnimationFrame(loop); };
+    raf.current = requestAnimationFrame(loop);
+  };
+  const finish = () => {
+    cancelAnimationFrame(raf.current);
+    const ms = Math.max(10, Math.floor((performance.now() - t0.current) / 10) * 10);
+    Sfx.click();
+    const solve = { id: uid(), ms: ms, plus2: penalty.current === 'plus2', dnf: penalty.current === 'dnf', scramble: R.current.scr, puzzle: R.current.settings.puzzle, ts: Date.now() };
+    penalty.current = null;
+    const prev = R.current.puzzleSolves.map(eff).filter(Number.isFinite);
+    const isPb = prev.length > 0 && !solve.dnf && eff(solve) < Math.min.apply(null, prev);
+    setElapsed(ms); setSolves((s) => s.concat([solve])); setScr(genScramble(R.current.settings.puzzle)); setPhase('idle'); setPb(isPb);
+    if (isPb) {
+      Sfx.chime();
+      const calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (window.confetti && !calm) {
+        const colors = ['#2de39b', '#ffd25e', '#ffffff', '#ff4b4b', '#0a84ff'];
+        confetti({ particleCount: 140, spread: 80, origin: { y: 0.4 }, colors: colors });
+        setTimeout(() => confetti({ particleCount: 90, spread: 110, origin: { y: 0.5 }, colors: colors }), 220);
+      }
+    }
+  };
+  const beginHold = (f) => {
+    from.current = f; setPhase('holding');
+    clearTimeout(holdT.current);
+    holdT.current = setTimeout(() => { if (phaseRef.current === 'holding') { setPhase('armed'); try { navigator.vibrate && navigator.vibrate(12); } catch (e) { /* ignore */ } } }, 300);
+  };
+  const abort = () => {
+    clearTimeout(holdT.current); stopInspection(); pressed.current = false; tapStart.current = false;
+    if (phaseRef.current !== 'running') setPhase('idle');
+  };
+  // press: stops a running timer at once; otherwise begins a hold (or starts inspection on release)
+  const down = () => {
+    const ph = phaseRef.current;
+    if (ph === 'running') { finish(); pressed.current = false; return; }
+    if (ph === 'idle') {
+      pressed.current = true;
+      if (R.current.settings.inspection) tapStart.current = true; else beginHold('idle');
+    } else if (ph === 'inspect') { pressed.current = true; beginHold('inspect'); }
+  };
+  const up = () => {
+    if (!pressed.current) return;
+    pressed.current = false;
+    if (tapStart.current) { tapStart.current = false; startInspection(); return; }
+    const ph = phaseRef.current;
+    if (ph === 'holding') { clearTimeout(holdT.current); setPhase(from.current); }
+    else if (ph === 'armed') startRun();
+  };
+  const cancelPress = () => {
+    if (!pressed.current) return;
+    pressed.current = false; tapStart.current = false; clearTimeout(holdT.current);
+    if (phaseRef.current === 'holding' || phaseRef.current === 'armed') setPhase(from.current);
+  };
+  const H = useRef({}); H.current = { down: down, up: up, cancelPress: cancelPress, abort: abort };
+
+  // One set of Pointer Events covers mouse, touch and pen, so a touch never fires a second synthetic mouse press.
+  useEffect(() => {
+    const inField = (t) => t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName);
+    const pd = (e) => {
+      Sfx.ensure();
+      if (R.current.view !== 'timer' || !e.isPrimary) return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      if (phaseRef.current !== 'running' && e.target.closest && e.target.closest('[data-ui]')) return;
+      H.current.down();
+    };
+    const pu = () => H.current.up();
+    const pc = () => H.current.cancelPress();
+    const kd = (e) => {
+      if (R.current.view !== 'timer' || inField(e.target)) return;
+      if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) { Sfx.ensure(); H.current.down(); } }
+      else if (e.key === 'Escape') H.current.abort();
+    };
+    const ku = (e) => { if (e.code === 'Space' && R.current.view === 'timer' && !inField(e.target)) { e.preventDefault(); H.current.up(); } };
+    window.addEventListener('pointerdown', pd); window.addEventListener('pointerup', pu); window.addEventListener('pointercancel', pc);
+    window.addEventListener('keydown', kd); window.addEventListener('keyup', ku);
+    return () => {
+      window.removeEventListener('pointerdown', pd); window.removeEventListener('pointerup', pu); window.removeEventListener('pointercancel', pc);
+      window.removeEventListener('keydown', kd); window.removeEventListener('keyup', ku);
+    };
+  }, []);
+
+  useEffect(() => { saveStore(solves, settings); }, [solves, settings]);
+  useEffect(() => { Sfx.set(settings.volume, settings.muted); }, [settings.volume, settings.muted]);
+  useEffect(() => {
+    const el = document.documentElement;
+    if (settings.theme === 'system') el.removeAttribute('data-theme'); else el.setAttribute('data-theme', settings.theme);
+  }, [settings.theme]);
+  useEffect(() => { setScr(genScramble(settings.puzzle)); }, [settings.puzzle]);
+  useEffect(() => { if (view !== 'timer') abort(); }, [view]);
+
+  const change = (patch) => setSettings((s) => Object.assign({}, s, patch));
+  const mod = (id, key) => setSolves((a) => a.map((s) => (s.id === id ? Object.assign({}, s, { [key]: !s[key] }) : s)));
+  const del = (id) => setSolves((a) => a.filter((s) => s.id !== id));
+  const doImport = (list, replace) => {
+    setSolves((cur) => {
+      if (replace) return list.slice().sort((a, b) => a.ts - b.ts);
+      const ids = {}; cur.forEach((s) => { ids[s.id] = 1; });
+      return cur.concat(list.filter((s) => !ids[s.id])).sort((a, b) => a.ts - b.ts);
+    });
+    return list.length;
+  };
+  const lastSolve = puzzleSolves.length ? puzzleSolves[puzzleSolves.length - 1] : null;
+
+  let content;
+  if (view === 'timer') content = html`<${TimerView} phase=${phase} elapsed=${elapsed} inspE=${inspE} settings=${settings} scr=${scr} lastSolve=${lastSolve} stats=${stats} pb=${pb}
+    onNewScramble=${() => setScr(genScramble(settings.puzzle))} onMod=${mod} onDelete=${del} />`;
+  else if (view === 'history') content = html`<${HistoryView} solves=${puzzleSolves} stats=${stats} puzzle=${settings.puzzle} onPuzzle=${(v) => change({ puzzle: v })} onMod=${mod} onDelete=${del} onData=${() => setDataOpen(true)} onGoTimer=${() => setView('timer')} />`;
+  else if (view === 'tutorials') content = html`<${TutorialsView} onOpen=${setTut} />`;
+  else content = html`<${SettingsView} settings=${settings} onChange=${change} onData=${() => setDataOpen(true)} />`;
+
+  return html`<${React.Fragment}>
+    <${Header} view=${view} onView=${setView} />
+    <main style=${{ flex: 1, minHeight: 0, position: 'relative' }}>
+      <${AnimatePresence} mode="wait" initial=${false}>
+        <${motion.div} key=${view} className="fill" initial=${{ opacity: 0, y: 14 }} animate=${{ opacity: 1, y: 0 }} exit=${{ opacity: 0, y: -10 }} transition=${{ duration: 0.18 }}>${content}<//>
+      <//>
+    </main>
+    <${Modal} open=${!!tut} onClose=${() => setTut(null)} label="Algorithm details">
+      ${tut && html`<h2>${tut.name}</h2>
+        <div className="toolbar"><span className="chip">${tut.cat}</span><span className=${'pill d-' + tut.diff}>${tut.diff}</span><span className="chip">${tut.moves} moves</span></div>
+        <div className="soonbox"><strong>Coming Soon:</strong> Interactive 3D visualizer and step-by-step breakdown are under development!</div>
+        <div className="actions" style=${{ justifyContent: 'flex-end' }}><${Btn} className="primary" onClick=${() => setTut(null)}>Got it<//></div>`}
+    <//>
+    <${DataModal} open=${dataOpen} onClose=${() => setDataOpen(false)} solves=${solves} settings=${settings} onImport=${doImport} onClear=${() => { setSolves([]); setPb(false); }} />
+  <//>`;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+})();
+</script>
+
+<script>if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){});});}</script>
+</body>
+</html>
